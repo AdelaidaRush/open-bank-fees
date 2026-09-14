@@ -12,6 +12,9 @@ on:
       workers:
         description: "threads per shard"
         default: "12"
+      limit:
+        description: "only the first N institutions (empty = all); use a small number to test a new runner"
+        default: ""
 permissions:
   contents: read
 jobs:
@@ -33,4 +36,4 @@ jobs:
       - uses: actions/checkout@v4
       - run: python3 -m pip install -q -r requirements.txt
       - name: crawl shard ${{ matrix.shard }}
-        run: python3 -m crawler.cli run --shard ${{ matrix.shard }} --of ${{ inputs.shards }} --workers ${{ inputs.workers }}
+        run: python3 -m crawler.cli run --shard ${{ matrix.shard }} --of ${{ inputs.shards }} --workers ${{ inputs.workers }} ${{ inputs.limit != '' && format('--limit {0}', inputs.limit) || '' }}
