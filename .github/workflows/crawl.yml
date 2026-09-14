@@ -1,0 +1,36 @@
+name: crawl
+# Collection runs only on maintainers' machines (self-hosted runners labelled "crawler").
+# Started only by hand (workflow_dispatch, needs write access): a fork's pull request can never reach a runner.
+# Data paths come from the runner's own environment, never from the repository.
+# GitHub-hosted runners must not be used for it: see README, "Running it on more machines".
+on:
+  workflow_dispatch:
+    inputs:
+      shards:
+        description: "number of shards"
+        default: "4"
+      workers:
+        description: "threads per shard"
+        default: "12"
+permissions:
+  contents: read
+jobs:
+  plan:
+    runs-on: [self-hosted, crawler]
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - id: m
+        run: python3 -c "import json,os;n=int('${{ inputs.shards }}');print('matrix='+json.dumps({'shard':list(range(n))}))" >> "$GITHUB_OUTPUT"
+  crawl:
+    needs: plan
+    runs-on: [self-hosted, crawler]
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m pip install -q -r requirements.txt
+      - name: crawl shard ${{ matrix.shard }}
+        run: python3 -m crawler.cli run --shard ${{ matrix.shard }} --of ${{ inputs.shards }} --workers ${{ inputs.workers }}

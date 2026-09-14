@@ -1,0 +1,11 @@
+# collected data never goes into the public repository
+open-bank-fees-data/
+*.jsonl
+*.db
+*.db-wal
+*.db-shm
+results*/
+__pycache__/
+.pytest_cache/
+.env
+*.age
