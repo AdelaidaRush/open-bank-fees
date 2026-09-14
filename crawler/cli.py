@@ -6,7 +6,7 @@
 """
 import argparse, json, os, sys, time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from . import config, targets as T, ccindex, ccbulk, fetch, extract, verify
+from . import config, targets as T, ccindex, ccbulk, wayback, fetch, extract, verify
 from .warehouse import Warehouse
 
 
@@ -109,6 +109,30 @@ def cmd_reextract(a):
     print(f"re-extracted {len(domains)} domains from the warehouse: {with_facts} with facts, {total} facts, {rej} rejected by verify")
 
 
+def cmd_wayback(a):
+    """Domains Common Crawl had nothing for, read from the Wayback Machine, slowly and one at a time."""
+    wh = Warehouse()
+    ts = {t["domain"]: t for t in T.load()}
+    todo = [d for (d,) in wh.db.execute("SELECT domain FROM domain_run WHERE status='no_pages' ORDER BY domain")]
+    done = {d for (d,) in wh.db.execute("SELECT domain FROM domain_run WHERE status LIKE 'wb_%'")}
+    todo = [d for d in todo if d in ts and d not in done][: a.limit or None]
+    print(f"wayback: {len(todo)} domains without Common Crawl pages", flush=True)
+    t0, agg = time.time(), {}
+    for i, d in enumerate(todo, 1):
+        recs = wayback.find_pages(d)
+        if recs is None:
+            status = "wb_unreachable"; r = {"status": status}
+            wh.done(d, ts[d]["slugs"], status, 0, 0, 1)
+        else:
+            r = one_domain(wh, ts[d], recs)
+            status = "wb_" + r["status"]
+            wh.db.execute("UPDATE domain_run SET status=? WHERE domain=?", (status, d)); wh.db.commit()
+        agg[status] = agg.get(status, 0) + 1
+        if i % 10 == 0 or i == len(todo):
+            print(f"  {i}/{len(todo)} {agg} ~{i/max(time.time()-t0,1)*3600:.0f} domains/hour", flush=True)
+    print(json.dumps({"wayback_done": len(todo), "by_status": agg}))
+
+
 def cmd_status(a):
     wh = Warehouse()
     q = lambda s: wh.db.execute(s).fetchall()
@@ -143,6 +167,7 @@ def main():
     r.set_defaults(f=cmd_run)
     s.add_parser("status").set_defaults(f=cmd_status)
     s.add_parser("reextract").set_defaults(f=cmd_reextract)
+    w = s.add_parser("wayback"); w.add_argument("--limit", type=int, default=None); w.set_defaults(f=cmd_wayback)
     e = s.add_parser("export"); e.add_argument("--out", default="results.jsonl"); e.set_defaults(f=cmd_export)
     a = p.parse_args(); a.f(a)
 

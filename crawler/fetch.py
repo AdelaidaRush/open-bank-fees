@@ -59,7 +59,11 @@ def pdf_text(body):
 
 
 def to_text(rec):
-    body = warc_payload(rec)
+    if rec.get("crawl") == "wayback":
+        from . import wayback
+        body = wayback.fetch(rec)
+    else:
+        body = warc_payload(rec)
     if body is None:
         return None
     if len(body) > config.MAX_BYTES:
